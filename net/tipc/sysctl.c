@@ -53,8 +53,10 @@ static struct ctl_table tipc_table[] = {
 int tipc_register_sysctl(void)
 {
 	tipc_ctl_hdr = register_net_sysctl(&init_net, "net/tipc", tipc_table);
-	if (tipc_ctl_hdr == NULL)
+	if (tipc_ctl_hdr == NULL) {
+		drop_log("Failed to register tipc table, no memory\n");
 		return -ENOMEM;
+	}
 	return 0;
 }
 

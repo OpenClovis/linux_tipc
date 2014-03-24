@@ -107,8 +107,10 @@ int tipc_ref_table_init(u32 requested_size, u32 start)
 
 	/* allocate table & mark all entries as uninitialized */
 	table = vzalloc(actual_size * sizeof(struct reference));
-	if (table == NULL)
+	if (table == NULL) {
+		drop_log("Failed to create reference table, no memory\n");
 		return -ENOMEM;
+	}
 
 	tipc_ref_table.entries = table;
 	tipc_ref_table.capacity = requested_size;

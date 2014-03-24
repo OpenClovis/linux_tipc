@@ -204,8 +204,10 @@ static struct tipc_conn *tipc_alloc_conn(struct tipc_server *s)
 	int ret;
 
 	con = kzalloc(sizeof(struct tipc_conn), GFP_ATOMIC);
-	if (!con)
+	if (!con) {
+		drop_log("Tipc alloc connection failed, no memory\n");
 		return ERR_PTR(-ENOMEM);
+	}
 
 	kref_init(&con->kref);
 	INIT_LIST_HEAD(&con->outqueue);
@@ -218,6 +220,7 @@ static struct tipc_conn *tipc_alloc_conn(struct tipc_server *s)
 	if (ret < 0) {
 		kfree(con);
 		spin_unlock_bh(&s->idr_lock);
+		drop_log("Tipc alloc connection failed, idr_alloc failed ret:%d\n", ret);
 		return ERR_PTR(-ENOMEM);
 	}
 	con->conid = ret;
@@ -242,6 +245,7 @@ static int tipc_receive_from_sock(struct tipc_conn *con)
 	buf = kmem_cache_alloc(s->rcvbuf_cache, GFP_ATOMIC);
 	if (!buf) {
 		ret = -ENOMEM;
+		drop_log("Failed to recv msg from sock, no memory\n");
 		goto out_close;
 	}
 
@@ -280,13 +284,16 @@ static int tipc_accept_from_sock(struct tipc_conn *con)
 	int ret;
 
 	ret = tipc_sock_accept_local(sock, &newsock, O_NONBLOCK);
-	if (ret < 0)
+	if (ret < 0) {
+		drop_log("failed accept connection, Err ret:%d\n", ret);
 		return ret;
+	}
 
 	newcon = tipc_alloc_conn(con->server);
 	if (IS_ERR(newcon)) {
 		ret = PTR_ERR(newcon);
 		sock_release(newsock);
+		drop_log("failed allocate new connection, ret:%d\n", ret);
 		return ret;
 	}
 
@@ -308,15 +315,21 @@ static struct socket *tipc_create_listen_sock(struct tipc_conn *con)
 	int ret;
 
 	ret = tipc_sock_create_local(s->type, &sock);
-	if (ret < 0)
+	if (ret < 0) {
+		drop_log("Failed to create local socket, Err ret:%d\n", ret);
 		return NULL;
+	}
 	ret = kernel_setsockopt(sock, SOL_TIPC, TIPC_IMPORTANCE,
 				(char *)&s->imp, sizeof(s->imp));
-	if (ret < 0)
+	if (ret < 0) {
+		drop_log("Failed to  set socket options, Err ret:%d\n", ret);
 		goto create_err;
+	}
 	ret = kernel_bind(sock, (struct sockaddr *)s->saddr, sizeof(*s->saddr));
-	if (ret < 0)
+	if (ret < 0) {
+		drop_log("Failed to bind socket, Err ret:%d\n", ret);
 		goto create_err;
+	}
 
 	switch (s->type) {
 	case SOCK_STREAM:
@@ -324,8 +337,10 @@ static struct socket *tipc_create_listen_sock(struct tipc_conn *con)
 		con->rx_action = tipc_accept_from_sock;
 
 		ret = kernel_listen(sock, 0);
-		if (ret < 0)
+		if (ret < 0) {
+			drop_log("Failed to listen on socket, Err ret:%d\n", ret);
 			goto create_err;
+		}
 		break;
 	case SOCK_DGRAM:
 	case SOCK_RDM:
@@ -357,6 +372,7 @@ static int tipc_open_listening_sock(struct tipc_server *s)
 		idr_remove(&s->conn_idr, con->conid);
 		s->idr_in_use--;
 		kfree(con);
+		drop_log("Failed to create listen socket\n");
 		return -EINVAL;
 	}
 
@@ -370,12 +386,15 @@ static struct outqueue_entry *tipc_alloc_entry(void *data, int len)
 	void *buf;
 
 	entry = kmalloc(sizeof(struct outqueue_entry), GFP_ATOMIC);
-	if (!entry)
+	if (!entry) {
+		drop_log("Failed allocate quueue entry , no memory\n");
 		return NULL;
+	}
 
 	buf = kmalloc(len, GFP_ATOMIC);
 	if (!buf) {
 		kfree(entry);
+		drop_log("Failed allocate entry of len %d, no memory\n", len);
 		return NULL;
 	}
 
@@ -411,12 +430,15 @@ int tipc_conn_sendmsg(struct tipc_server *s, int conid,
 	struct tipc_conn *con;
 
 	con = tipc_conn_lookup(s, conid);
-	if (!con)
+	if (!con) {
+		drop_log("Failed to send msg, Invalid connection\n");
 		return -EINVAL;
+	}
 
 	e = tipc_alloc_entry(data, len);
 	if (!e) {
 		conn_put(con);
+		drop_log("Failed allocate entry, no memory\n");
 		return -ENOMEM;
 	}
 
@@ -476,6 +498,7 @@ static void tipc_send_to_sock(struct tipc_conn *con)
 			cond_resched();
 			goto out;
 		} else if (ret < 0) {
+			drop_log("kernel send msg failed, Err ret=%d\n", ret);
 			goto send_err;
 		}
 
@@ -559,18 +582,22 @@ int tipc_server_start(struct tipc_server *s)
 
 	s->rcvbuf_cache = kmem_cache_create(s->name, s->max_rcvbuf_size,
 					    0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!s->rcvbuf_cache)
+	if (!s->rcvbuf_cache) {
+		drop_log("Failed to mem cache create, no memory\n");
 		return -ENOMEM;
+	}
 
 	ret = tipc_work_start(s);
 	if (ret < 0) {
 		kmem_cache_destroy(s->rcvbuf_cache);
+		drop_log("Failed to start work, Err ret:%d\n", ret);
 		return ret;
 	}
 	ret = tipc_open_listening_sock(s);
 	if (ret < 0) {
 		tipc_work_stop(s);
 		kmem_cache_destroy(s->rcvbuf_cache);
+		drop_log("Failed to open listening socket, Err ret:%d\n", ret);
 		return ret;
 	}
 	return ret;

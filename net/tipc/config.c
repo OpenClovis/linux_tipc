@@ -66,8 +66,10 @@ int tipc_cfg_append_tlv(struct sk_buff *buf, int tlv_type,
 	struct tlv_desc *tlv = (struct tlv_desc *)skb_tail_pointer(buf);
 	int new_tlv_space = TLV_SPACE(tlv_data_size);
 
-	if (skb_tailroom(buf) < new_tlv_space)
+	if (skb_tailroom(buf) < new_tlv_space) {
+		drop_log("Failed to append tlv, no tail room\n");
 		return 0;
+	}
 	skb_put(buf, new_tlv_space);
 	tlv->tlv_type = htons(tlv_type);
 	tlv->tlv_len  = htons(TLV_LENGTH(tlv_data_size));
@@ -86,6 +88,8 @@ static struct sk_buff *tipc_cfg_reply_unsigned_type(u16 tlv_type, u32 value)
 		value_net = htonl(value);
 		tipc_cfg_append_tlv(buf, tlv_type, &value_net,
 				    sizeof(value_net));
+	} else {
+		drop_log("Failed to append unsigned tlv, no memory\n");
 	}
 	return buf;
 }
@@ -101,8 +105,11 @@ struct sk_buff *tipc_cfg_reply_string_type(u16 tlv_type, char *string)
 	int string_len = strlen(string) + 1;
 
 	buf = tipc_cfg_reply_alloc(TLV_SPACE(string_len));
-	if (buf)
+	if (buf) {
 		tipc_cfg_append_tlv(buf, tlv_type, string, string_len);
+	} else {
+		drop_log("Failed to append string tlv, no memory\n");
+	}
 	return buf;
 }
 
@@ -123,8 +130,10 @@ static struct sk_buff *tipc_show_stats(void)
 		return tipc_cfg_reply_error_string("unsupported argument");
 
 	buf = tipc_cfg_reply_alloc(TLV_SPACE(ULTRA_STRING_MAX_LEN));
-	if (buf == NULL)
+	if (buf == NULL) {
+		drop_log("Failed to show stats, no memory\n");
 		return NULL;
+	}
 
 	rep_tlv = (struct tlv_desc *)buf->data;
 	pb = TLV_DATA(rep_tlv);

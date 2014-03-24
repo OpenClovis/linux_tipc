@@ -34,7 +34,7 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"10.0.600.0u"
+#define DRV_VER			"10.2u"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"Emulex BladeEngine2"
 #define BE3_NAME		"Emulex BladeEngine3"
@@ -359,6 +359,7 @@ struct be_vf_cfg {
 	int pmac_id;
 	u16 vlan_tag;
 	u32 tx_rate;
+	u32 plink_tracking;
 };
 
 enum vf_state {

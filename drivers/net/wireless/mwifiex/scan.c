@@ -738,8 +738,8 @@ mwifiex_scan_channel_list(struct mwifiex_private *priv,
 		else
 			cmd_no = HostCmd_CMD_802_11_SCAN;
 
-		ret = mwifiex_send_cmd_async(priv, cmd_no, HostCmd_ACT_GEN_SET,
-					     0, scan_cfg_out);
+		ret = mwifiex_send_cmd(priv, cmd_no, HostCmd_ACT_GEN_SET,
+				       0, scan_cfg_out, false);
 
 		/* rate IE is updated per scan command but same starting
 		 * pointer is used each time so that rate IE from earlier
@@ -2311,12 +2311,12 @@ mwifiex_save_curr_bcn(struct mwifiex_private *priv)
 			 curr_bss->ht_info_offset);
 
 	if (curr_bss->bcn_vht_cap)
-		curr_bss->bcn_ht_cap = (void *)(curr_bss->beacon_buf +
-						curr_bss->vht_cap_offset);
+		curr_bss->bcn_vht_cap = (void *)(curr_bss->beacon_buf +
+						 curr_bss->vht_cap_offset);
 
 	if (curr_bss->bcn_vht_oper)
-		curr_bss->bcn_ht_oper = (void *)(curr_bss->beacon_buf +
-						 curr_bss->vht_info_offset);
+		curr_bss->bcn_vht_oper = (void *)(curr_bss->beacon_buf +
+						  curr_bss->vht_info_offset);
 
 	if (curr_bss->bcn_bss_co_2040)
 		curr_bss->bcn_bss_co_2040 =

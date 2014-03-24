@@ -591,10 +591,10 @@ static struct rtnl_link_stats64 *be_get_stats64(struct net_device *netdev,
 	for_all_rx_queues(adapter, rxo, i) {
 		const struct be_rx_stats *rx_stats = rx_stats(rxo);
 		do {
-			start = u64_stats_fetch_begin_bh(&rx_stats->sync);
+			start = u64_stats_fetch_begin_irq(&rx_stats->sync);
 			pkts = rx_stats(rxo)->rx_pkts;
 			bytes = rx_stats(rxo)->rx_bytes;
-		} while (u64_stats_fetch_retry_bh(&rx_stats->sync, start));
+		} while (u64_stats_fetch_retry_irq(&rx_stats->sync, start));
 		stats->rx_packets += pkts;
 		stats->rx_bytes += bytes;
 		stats->multicast += rx_stats(rxo)->rx_mcast_pkts;
@@ -605,10 +605,10 @@ static struct rtnl_link_stats64 *be_get_stats64(struct net_device *netdev,
 	for_all_tx_queues(adapter, txo, i) {
 		const struct be_tx_stats *tx_stats = tx_stats(txo);
 		do {
-			start = u64_stats_fetch_begin_bh(&tx_stats->sync);
+			start = u64_stats_fetch_begin_irq(&tx_stats->sync);
 			pkts = tx_stats(txo)->tx_pkts;
 			bytes = tx_stats(txo)->tx_bytes;
-		} while (u64_stats_fetch_retry_bh(&tx_stats->sync, start));
+		} while (u64_stats_fetch_retry_irq(&tx_stats->sync, start));
 		stats->tx_packets += pkts;
 		stats->tx_bytes += bytes;
 	}
@@ -652,7 +652,7 @@ void be_link_status_update(struct be_adapter *adapter, u8 link_status)
 		adapter->flags |= BE_FLAGS_LINK_STATUS_INIT;
 	}
 
-	if ((link_status & LINK_STATUS_MASK) == LINK_UP)
+	if (link_status)
 		netif_carrier_on(netdev);
 	else
 		netif_carrier_off(netdev);
@@ -1138,7 +1138,10 @@ static int be_vlan_add_vid(struct net_device *netdev, __be16 proto, u16 vid)
 
 	/* Packets with VID 0 are always received by Lancer by default */
 	if (lancer_chip(adapter) && vid == 0)
-		goto ret;
+		return status;
+
+	if (adapter->vlan_tag[vid])
+		return status;
 
 	adapter->vlan_tag[vid] = 1;
 	adapter->vlans_added++;
@@ -1148,7 +1151,7 @@ static int be_vlan_add_vid(struct net_device *netdev, __be16 proto, u16 vid)
 		adapter->vlans_added--;
 		adapter->vlan_tag[vid] = 0;
 	}
-ret:
+
 	return status;
 }
 
@@ -1288,6 +1291,7 @@ static int be_get_vf_config(struct net_device *netdev, int vf,
 	vi->vlan = vf_cfg->vlan_tag & VLAN_VID_MASK;
 	vi->qos = vf_cfg->vlan_tag >> VLAN_PRIO_SHIFT;
 	memcpy(&vi->mac, vf_cfg->mac_addr, ETH_ALEN);
+	vi->linkstate = adapter->vf_cfg[vf].plink_tracking;
 
 	return 0;
 }
@@ -1354,6 +1358,24 @@ static int be_set_vf_tx_rate(struct net_device *netdev,
 		adapter->vf_cfg[vf].tx_rate = rate;
 	return status;
 }
+static int be_set_vf_link_state(struct net_device *netdev, int vf,
+				int link_state)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+	int status;
+
+	if (!sriov_enabled(adapter))
+		return -EPERM;
+
+	if (vf >= adapter->num_vfs)
+		return -EINVAL;
+
+	status = be_cmd_set_logical_link_config(adapter, link_state, vf+1);
+	if (!status)
+		adapter->vf_cfg[vf].plink_tracking = link_state;
+
+	return status;
+}
 
 static void be_aic_update(struct be_aic_obj *aic, u64 rx_pkts, u64 tx_pkts,
 			  ulong now)
@@ -1386,15 +1408,15 @@ static void be_eqd_update(struct be_adapter *adapter)
 
 		rxo = &adapter->rx_obj[eqo->idx];
 		do {
-			start = u64_stats_fetch_begin_bh(&rxo->stats.sync);
+			start = u64_stats_fetch_begin_irq(&rxo->stats.sync);
 			rx_pkts = rxo->stats.rx_pkts;
-		} while (u64_stats_fetch_retry_bh(&rxo->stats.sync, start));
+		} while (u64_stats_fetch_retry_irq(&rxo->stats.sync, start));
 
 		txo = &adapter->tx_obj[eqo->idx];
 		do {
-			start = u64_stats_fetch_begin_bh(&txo->stats.sync);
+			start = u64_stats_fetch_begin_irq(&txo->stats.sync);
 			tx_pkts = txo->stats.tx_reqs;
-		} while (u64_stats_fetch_retry_bh(&txo->stats.sync, start));
+		} while (u64_stats_fetch_retry_irq(&txo->stats.sync, start));
 
 
 		/* Skip, if wrapped around or first calculation */
@@ -1897,7 +1919,7 @@ static u16 be_tx_compl_process(struct be_adapter *adapter,
 		queue_tail_inc(txq);
 	} while (cur_index != last_index);
 
-	kfree_skb(sent_skb);
+	dev_kfree_skb_any(sent_skb);
 	return num_wrbs;
 }
 
@@ -3109,8 +3131,12 @@ static int be_vf_setup(struct be_adapter *adapter)
 		if (!status)
 			vf_cfg->tx_rate = lnk_speed;
 
-		if (!old_vfs)
+		if (!old_vfs) {
 			be_cmd_enable_vf(adapter, vf + 1);
+			be_cmd_set_logical_link_config(adapter,
+						       IFLA_VF_LINK_STATE_AUTO,
+						       vf+1);
+		}
 	}
 
 	if (!old_vfs) {
@@ -3150,13 +3176,16 @@ static void BEx_get_resources(struct be_adapter *adapter,
 {
 	struct pci_dev *pdev = adapter->pdev;
 	bool use_sriov = false;
-	int max_vfs;
+	int max_vfs = 0;
 
-	max_vfs = pci_sriov_get_totalvfs(pdev);
-
-	if (BE3_chip(adapter) && sriov_want(adapter)) {
-		res->max_vfs = max_vfs > 0 ? min(MAX_VFS, max_vfs) : 0;
-		use_sriov = res->max_vfs;
+	if (be_physfn(adapter) && BE3_chip(adapter)) {
+		be_cmd_get_profile_config(adapter, res, 0);
+		/* Some old versions of BE3 FW don't report max_vfs value */
+		if (res->max_vfs == 0) {
+			max_vfs = pci_sriov_get_totalvfs(pdev);
+			res->max_vfs = max_vfs > 0 ? min(MAX_VFS, max_vfs) : 0;
+		}
+		use_sriov = res->max_vfs && sriov_want(adapter);
 	}
 
 	if (be_physfn(adapter))
@@ -3183,9 +3212,13 @@ static void BEx_get_resources(struct be_adapter *adapter,
 
 	res->max_mcast_mac = BE_MAX_MC;
 
-	/* For BE3 1Gb ports, F/W does not properly support multiple TXQs */
-	if (BE2_chip(adapter) || use_sriov || be_is_mc(adapter) ||
-	    !be_physfn(adapter) || (adapter->port_num > 1))
+	/* 1) For BE3 1Gb ports, FW does not support multiple TXQs
+	 * 2) Create multiple TX rings on a BE3-R multi-channel interface
+	 *    *only* if it is RSS-capable.
+	 */
+	if (BE2_chip(adapter) || use_sriov ||  (adapter->port_num > 1) ||
+	    !be_physfn(adapter) || (be_is_mc(adapter) &&
+	    !(adapter->function_caps & BE_FUNCTION_CAPS_RSS)))
 		res->max_tx_qs = 1;
 	else
 		res->max_tx_qs = BE3_MAX_TX_QS;
@@ -3197,7 +3230,7 @@ static void BEx_get_resources(struct be_adapter *adapter,
 	res->max_rx_qs = res->max_rss_qs + 1;
 
 	if (be_physfn(adapter))
-		res->max_evt_qs = (max_vfs > 0) ?
+		res->max_evt_qs = (res->max_vfs > 0) ?
 					BE3_SRIOV_MAX_EVT_QS : BE3_MAX_EVT_QS;
 	else
 		res->max_evt_qs = 1;
@@ -3288,9 +3321,8 @@ static int be_get_config(struct be_adapter *adapter)
 	if (status)
 		return status;
 
-	/* primary mac needs 1 pmac entry */
-	adapter->pmac_id = kcalloc(be_max_uc(adapter) + 1, sizeof(u32),
-				   GFP_KERNEL);
+	adapter->pmac_id = kcalloc(be_max_uc(adapter),
+				   sizeof(*adapter->pmac_id), GFP_KERNEL);
 	if (!adapter->pmac_id)
 		return -ENOMEM;
 
@@ -3463,6 +3495,10 @@ static int be_setup(struct be_adapter *adapter)
 	if (rx_fc != adapter->rx_fc || tx_fc != adapter->tx_fc)
 		be_cmd_set_flow_control(adapter, adapter->tx_fc,
 					adapter->rx_fc);
+
+	if (be_physfn(adapter))
+		be_cmd_set_logical_link_config(adapter,
+					       IFLA_VF_LINK_STATE_AUTO, 0);
 
 	if (sriov_want(adapter)) {
 		if (be_max_vfs(adapter))
@@ -4103,6 +4139,7 @@ static const struct net_device_ops be_netdev_ops = {
 	.ndo_set_vf_vlan	= be_set_vf_vlan,
 	.ndo_set_vf_tx_rate	= be_set_vf_tx_rate,
 	.ndo_get_vf_config	= be_get_vf_config,
+	.ndo_set_vf_link_state  = be_set_vf_link_state,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= be_netpoll,
 #endif

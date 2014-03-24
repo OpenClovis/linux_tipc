@@ -3548,7 +3548,7 @@ static void bond_xmit_slave_id(struct bonding *bond, struct sk_buff *skb, int sl
 		}
 	}
 	/* no slave that can tx has been found */
-	kfree_skb(skb);
+	dev_kfree_skb_any(skb);
 }
 
 /**
@@ -3624,7 +3624,7 @@ static int bond_xmit_activebackup(struct sk_buff *skb, struct net_device *bond_d
 	if (slave)
 		bond_dev_queue_xmit(bond, skb, slave->dev);
 	else
-		kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 
 	return NETDEV_TX_OK;
 }
@@ -3667,7 +3667,7 @@ static int bond_xmit_broadcast(struct sk_buff *skb, struct net_device *bond_dev)
 	if (slave && IS_UP(slave->dev) && slave->link == BOND_LINK_UP)
 		bond_dev_queue_xmit(bond, skb, slave->dev);
 	else
-		kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 
 	return NETDEV_TX_OK;
 }
@@ -3754,7 +3754,7 @@ static netdev_tx_t __bond_start_xmit(struct sk_buff *skb, struct net_device *dev
 		pr_err("%s: Error: Unknown bonding mode %d\n",
 		       dev->name, bond->params.mode);
 		WARN_ON_ONCE(1);
-		kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 }
@@ -3775,7 +3775,7 @@ static netdev_tx_t bond_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (bond_has_slaves(bond))
 		ret = __bond_start_xmit(skb, dev);
 	else
-		kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 	rcu_read_unlock();
 
 	return ret;
@@ -3947,56 +3947,11 @@ static void bond_uninit(struct net_device *bond_dev)
 
 /*------------------------- Module initialization ---------------------------*/
 
-int bond_parm_tbl_lookup(int mode, const struct bond_parm_tbl *tbl)
-{
-	int i;
-
-	for (i = 0; tbl[i].modename; i++)
-		if (mode == tbl[i].mode)
-			return tbl[i].mode;
-
-	return -1;
-}
-
-static int bond_parm_tbl_lookup_name(const char *modename,
-				     const struct bond_parm_tbl *tbl)
-{
-	int i;
-
-	for (i = 0; tbl[i].modename; i++)
-		if (strcmp(modename, tbl[i].modename) == 0)
-			return tbl[i].mode;
-
-	return -1;
-}
-
-/*
- * Convert string input module parms.  Accept either the
- * number of the mode or its string name.  A bit complicated because
- * some mode names are substrings of other names, and calls from sysfs
- * may have whitespace in the name (trailing newlines, for example).
- */
-int bond_parse_parm(const char *buf, const struct bond_parm_tbl *tbl)
-{
-	int modeint;
-	char *p, modestr[BOND_MAX_MODENAME_LEN + 1];
-
-	for (p = (char *)buf; *p; p++)
-		if (!(isdigit(*p) || isspace(*p)))
-			break;
-
-	if (*p && sscanf(buf, "%20s", modestr) != 0)
-		return bond_parm_tbl_lookup_name(modestr, tbl);
-	else if (sscanf(buf, "%d", &modeint) != 0)
-		return bond_parm_tbl_lookup(modeint, tbl);
-
-	return -1;
-}
-
 static int bond_check_params(struct bond_params *params)
 {
 	int arp_validate_value, fail_over_mac_value, primary_reselect_value, i;
-	struct bond_opt_value newval, *valptr;
+	struct bond_opt_value newval;
+	const struct bond_opt_value *valptr;
 	int arp_all_targets_value;
 
 	/*

@@ -376,8 +376,10 @@ int tipc_reject_msg(struct sk_buff *buf, u32 err)
 		dump_stack();
 		goto exit;
 	}
-	if (msg_errcode(msg) || msg_dest_droppable(msg))
+	if (msg_errcode(msg) || msg_dest_droppable(msg)){
+		drop_log("Going to reject msg\n");
 		goto exit;
+	}
 
 	/*
 	 * construct returned message by copying rejected message header and
@@ -387,8 +389,10 @@ int tipc_reject_msg(struct sk_buff *buf, u32 err)
 	rmsg_sz = hdr_sz + min_t(u32, data_sz, MAX_REJECT_SIZE);
 
 	rbuf = tipc_buf_acquire(rmsg_sz);
-	if (rbuf == NULL)
+	if (rbuf == NULL){
+		drop_log("Failed to create reject msg, no memory\n");
 		goto exit;
+	}
 
 	rmsg = buf_msg(rbuf);
 	skb_copy_to_linear_data(rbuf, msg, rmsg_sz);
@@ -539,7 +543,9 @@ void tipc_port_proto_rcv(struct sk_buff *buf)
 			msg_set_errcode(msg, TIPC_ERR_NO_PORT);
 			msg_set_origport(msg, destport);
 			msg_set_destport(msg, msg_origport(msg));
-		}
+		} else {
+			drop_log("Unable to create tipc conn msg, no memory\n");
+                }
 		if (p_ptr)
 			tipc_port_unlock(p_ptr);
 		goto exit;
@@ -562,6 +568,7 @@ void tipc_port_proto_rcv(struct sk_buff *buf)
 		break;
 	default:
 		/* CONN_PROBE_REPLY or unrecognized - no action required */
+		drop_log("CONN_PROBE_REPLY or Unrecognized msg type\n");
 		break;
 	}
 	p_ptr->probing_state = CONFIRMED;
@@ -624,8 +631,10 @@ struct sk_buff *tipc_port_get_ports(void)
 	int str_len = 0;
 
 	buf = tipc_cfg_reply_alloc(TLV_SPACE(ULTRA_STRING_MAX_LEN));
-	if (!buf)
+	if (!buf){
+		drop_log("Unable to allocate memory for get ports reply msg\n");
 		return NULL;
+	}
 	rep_tlv = (struct tlv_desc *)buf->data;
 	pb = TLV_DATA(rep_tlv);
 	pb_len = ULTRA_STRING_MAX_LEN;
@@ -664,8 +673,10 @@ void tipc_acknowledge(u32 ref, u32 ack)
 	struct sk_buff *buf = NULL;
 
 	p_ptr = tipc_port_lock(ref);
-	if (!p_ptr)
+	if (!p_ptr){
+		drop_log("Invalid reference pointer while sending acknowledge\n");
 		return;
+	}
 	if (p_ptr->connected) {
 		p_ptr->conn_unacked -= ack;
 		buf = port_build_proto_msg(p_ptr, CONN_ACK, ack);
@@ -679,8 +690,10 @@ int tipc_portimportance(u32 ref, unsigned int *importance)
 	struct tipc_port *p_ptr;
 
 	p_ptr = tipc_port_lock(ref);
-	if (!p_ptr)
+	if (!p_ptr){
+		drop_log("Invalid port reference pointer\n");
 		return -EINVAL;
+	}
 	*importance = (unsigned int)msg_importance(&p_ptr->phdr);
 	tipc_port_unlock(p_ptr);
 	return 0;
@@ -708,11 +721,15 @@ int tipc_publish(struct tipc_port *p_ptr, unsigned int scope,
 	struct publication *publ;
 	u32 key;
 
-	if (p_ptr->connected)
+	if (p_ptr->connected){
+		drop_log("unable to publish port, it already connected\n");
 		return -EINVAL;
+	}
 	key = p_ptr->ref + p_ptr->pub_count + 1;
-	if (key == p_ptr->ref)
+	if (key == p_ptr->ref){
+		drop_log("Unable to publish port, address already in use\n");
 		return -EADDRINUSE;
+	}
 
 	publ = tipc_nametbl_publish(seq->type, seq->lower, seq->upper,
 				    scope, p_ptr->ref, key);
@@ -722,6 +739,7 @@ int tipc_publish(struct tipc_port *p_ptr, unsigned int scope,
 		p_ptr->published = 1;
 		return 0;
 	}
+	drop_log("Unable to publish name table\n");
 	return -EINVAL;
 }
 
@@ -767,8 +785,10 @@ int tipc_port_connect(u32 ref, struct tipc_portid const *peer)
 	int res;
 
 	p_ptr = tipc_port_lock(ref);
-	if (!p_ptr)
+	if (!p_ptr){
+		drop_log("Invalid reference pointer to connect\n");
 		return -EINVAL;
+	}
 	res = __tipc_port_connect(ref, p_ptr, peer);
 	tipc_port_unlock(p_ptr);
 	return res;

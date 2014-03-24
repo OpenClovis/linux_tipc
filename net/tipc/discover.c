@@ -134,30 +134,42 @@ void tipc_disc_rcv(struct sk_buff *buf, struct tipc_bearer *b_ptr)
 	kfree_skb(buf);
 
 	/* Ensure message from node is valid and communication is permitted */
-	if (net_id != tipc_net_id)
+	if (net_id != tipc_net_id){
+		drop_log("Didsovry Packet Rcvd with unknow network-Id[0x%x]\n", net_id);
 		return;
+	}
 	if (media_addr.broadcast)
 		return;
-	if (!tipc_addr_domain_valid(dest))
+	if (!tipc_addr_domain_valid(dest)){
+		drop_log("Didsovry Packet Rcvd with Invalid Domain-Id[0x%x]\n", dest);
 		return;
-	if (!tipc_addr_node_valid(orig))
+	}
+	if (!tipc_addr_node_valid(orig)){
+		drop_log("Didsovry Packet Rcvd with Invalid origin node-Id[0x%x]\n", orig);
 		return;
+	}
 	if (orig == tipc_own_addr) {
 		if (memcmp(&media_addr, &b_ptr->addr, sizeof(media_addr)))
 			disc_dupl_alert(b_ptr, tipc_own_addr, &media_addr);
 		return;
 	}
-	if (!tipc_in_scope(dest, tipc_own_addr))
+	if (!tipc_in_scope(dest, tipc_own_addr)){
+		drop_log("Discovery Packet Rcvd destination addr[0x%x] is not my address scope\n", dest);
 		return;
-	if (!tipc_in_scope(b_ptr->link_req->domain, orig))
+	}
+	if (!tipc_in_scope(b_ptr->link_req->domain, orig)){
+		drop_log("Discovery Packet Rcvd origin address[0x%x] is not link requrest Domain Scope\n", orig);
 		return;
+	}
 
 	/* Locate structure corresponding to requesting node */
 	n_ptr = tipc_node_find(orig);
 	if (!n_ptr) {
 		n_ptr = tipc_node_create(orig);
-		if (!n_ptr)
+		if (!n_ptr){
+			drop_log("Failed to create New node with Origin address[0x%x]\n", orig);
 			return;
+		}
 	}
 	tipc_node_lock(n_ptr);
 
@@ -234,6 +246,7 @@ void tipc_disc_rcv(struct sk_buff *buf, struct tipc_bearer *b_ptr)
 		link = tipc_link_create(n_ptr, b_ptr, &media_addr);
 		if (!link) {
 			tipc_node_unlock(n_ptr);
+			drop_log("Failed to create Link End Point\n");
 			return;
 		}
 	}
@@ -348,12 +361,14 @@ int tipc_disc_create(struct tipc_bearer *b_ptr, struct tipc_media_addr *dest,
 	struct tipc_link_req *req;
 
 	req = kmalloc(sizeof(*req), GFP_ATOMIC);
-	if (!req)
+	if (!req){
+		drop_log("[%s:%d]Discovery msg creation failed, no memory\n", __FUNCTION__, __LINE__);
 		return -ENOMEM;
-
+	}
 	req->buf = tipc_disc_init_msg(DSC_REQ_MSG, dest_domain, b_ptr);
 	if (!req->buf) {
 		kfree(req);
+		drop_log("[%s:%d] Discovery Msg Init Failed \n", __FUNCTION__, __LINE__);
 		return -ENOMSG;
 	}
 

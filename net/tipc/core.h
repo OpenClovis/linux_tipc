@@ -203,4 +203,5 @@ static inline struct tipc_msg *buf_msg(struct sk_buff *skb)
 
 struct sk_buff *tipc_buf_acquire(u32 size);
 
+#define drop_log pr_info
 #endif

@@ -509,6 +509,7 @@ static int tipc_l2_rcv_msg(struct sk_buff *buf, struct net_device *dev,
 
 	if (!net_eq(dev_net(dev), &init_net)) {
 		kfree_skb(buf);
+                drop_log("Invalid Net device\n");
 		return NET_RX_DROP;
 	}
 
@@ -525,6 +526,7 @@ static int tipc_l2_rcv_msg(struct sk_buff *buf, struct net_device *dev,
 	rcu_read_unlock();
 
 	kfree_skb(buf);
+        drop_log("No reference for tpc data\n");
 	return NET_RX_DROP;
 }
 

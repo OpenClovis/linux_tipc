@@ -1461,16 +1461,22 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 		buf->next = NULL;
 
 		/* Ensure bearer is still enabled */
-		if (unlikely(!b_ptr->active))
+		if (unlikely(!b_ptr->active)){
+		        drop_log("Bearer is not enabled\n");
 			goto discard;
+		}
 
 		/* Ensure message is well-formed */
-		if (unlikely(!link_recv_buf_validate(buf)))
+		if (unlikely(!link_recv_buf_validate(buf))){
+		        drop_log("Msg Received is not well-formed\n");
 			goto discard;
+		}
 
 		/* Ensure message data is a single contiguous unit */
-		if (unlikely(skb_linearize(buf)))
+		if (unlikely(skb_linearize(buf))){
+		        drop_log("Msg data is not sigle Contiguous unit\n");
 			goto discard;
+		}
 
 		/* Handle arrival of a non-unicast link message */
 		msg = buf_msg(buf);
@@ -1485,19 +1491,25 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 
 		/* Discard unicast link messages destined for another node */
 		if (unlikely(!msg_short(msg) &&
-			     (msg_destnode(msg) != tipc_own_addr)))
+			     (msg_destnode(msg) != tipc_own_addr))) {
+		        drop_log("Unicast msg is for another node \n");
 			goto discard;
+		}
 
 		/* Locate neighboring node that sent message */
 		n_ptr = tipc_node_find(msg_prevnode(msg));
-		if (unlikely(!n_ptr))
+		if (unlikely(!n_ptr)){
+		        drop_log("Neighboring node is not present in the rcvd msg\n");
 			goto discard;
+		}
 		tipc_node_lock(n_ptr);
 
 		/* Locate unicast link endpoint that should handle message */
 		l_ptr = n_ptr->links[b_ptr->identity];
-		if (unlikely(!l_ptr))
+		if (unlikely(!l_ptr)){
+		        drop_log("Unicast link endpoint is not found\n");
 			goto unlock_discard;
+		}
 
 		/* Verify that communication with node is currently allowed */
 		if ((n_ptr->block_setup & WAIT_PEER_DOWN) &&
@@ -1507,8 +1519,10 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 			!msg_redundant_link(msg))
 			n_ptr->block_setup &= ~WAIT_PEER_DOWN;
 
-		if (n_ptr->block_setup)
+		if (n_ptr->block_setup){
+		        drop_log("Communication is blocked with node\n");
 			goto unlock_discard;
+		}
 
 		/* Validate message sequence number info */
 		seq_no = msg_seqno(msg);
@@ -1580,6 +1594,7 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 		if (unlikely(msg_user(msg) ==  CHANGEOVER_PROTOCOL)) {
 			if (!tipc_link_tunnel_rcv(n_ptr, &buf)) {
 				tipc_node_unlock(n_ptr);
+				drop_log("tunnel rcv failed\n");
 				continue;
 			}
 			msg = buf_msg(buf);
@@ -1597,6 +1612,7 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 				if (rc == LINK_REASM_ERROR)
 					tipc_link_reset(l_ptr);
 				tipc_node_unlock(n_ptr);
+		                drop_log("Link fragment reassembly error\n");
 				continue;
 			}
 		}
@@ -1628,6 +1644,7 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 			tipc_link_sync_rcv(n_ptr, buf);
 			break;
 		default:
+		        drop_log("Invalid Msg User Type\n");
 			kfree_skb(buf);
 			break;
 		}
@@ -1714,6 +1731,7 @@ static void link_handle_out_of_seq_msg(struct tipc_link *l_ptr,
 	if (less(seq_no, mod(l_ptr->next_in_no))) {
 		l_ptr->stats.duplicates++;
 		kfree_skb(buf);
+		drop_log("OOS duplicate packet rcvd\n");
 		return;
 	}
 
@@ -1724,8 +1742,10 @@ static void link_handle_out_of_seq_msg(struct tipc_link *l_ptr,
 		TIPC_SKB_CB(buf)->deferred = true;
 		if ((l_ptr->deferred_inqueue_sz % 16) == 1)
 			tipc_link_proto_xmit(l_ptr, STATE_MSG, 0, 0, 0, 0, 0);
-	} else
+	} else{
+		drop_log("Adding OOS packet to diferred queue is failed\n");
 		l_ptr->stats.duplicates++;
+	}
 }
 
 /*
@@ -1840,8 +1860,10 @@ static void tipc_link_proto_rcv(struct tipc_link *l_ptr, struct sk_buff *buf)
 	struct tipc_msg *msg = buf_msg(buf);
 
 	/* Discard protocol message during link changeover */
-	if (l_ptr->exp_msg_count)
+	if (l_ptr->exp_msg_count){
+		drop_log("Discarding protocol message during link changeover\n");
 		goto exit;
+	}
 
 	/* record unnumbered packet arrival (force mismatch on next timeout) */
 	l_ptr->checkpoint--;
@@ -1855,8 +1877,10 @@ static void tipc_link_proto_rcv(struct tipc_link *l_ptr, struct sk_buff *buf)
 	case RESET_MSG:
 		if (!link_working_unknown(l_ptr) &&
 		    (l_ptr->peer_session != INVALID_SESSION)) {
-			if (less_eq(msg_session(msg), l_ptr->peer_session))
+			if (less_eq(msg_session(msg), l_ptr->peer_session)){
+				drop_log("Duplicate or old reset msg, ignoring it...\n");
 				break; /* duplicate or old reset: ignore */
+			}
 		}
 
 		if (!msg_redundant_link(msg) && (link_working_working(l_ptr) ||
@@ -2209,12 +2233,16 @@ static int tipc_link_tunnel_rcv(struct tipc_node *n_ptr,
 
 	*buf = NULL;
 
-	if (bearer_id >= MAX_BEARERS)
+	if (bearer_id >= MAX_BEARERS){
+		drop_log("tunnel packet rcv bearer_id is invalid\n");
 		goto exit;
+	}
 
 	l_ptr = n_ptr->links[bearer_id];
-	if (!l_ptr)
+	if (!l_ptr){
+		drop_log("link not present for tunnel packet rcv bearer_id\n");
 		goto exit;
+	}
 
 	if (msg_type(t_msg) == DUPLICATE_MSG)
 		tipc_link_dup_rcv(l_ptr, t_buf);

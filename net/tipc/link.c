@@ -802,6 +802,8 @@ int __tipc_link_xmit(struct tipc_link *l_ptr, struct sk_buff *buf)
 				buf = bundler;
 				msg = buf_msg(buf);
 				l_ptr->stats.sent_bundles++;
+			} else {
+				drop_log("Failed to new bundle, no memory\n");
 			}
 		}
 	}
@@ -1833,8 +1835,10 @@ void tipc_link_proto_xmit(struct tipc_link *l_ptr, u32 msg_typ, int probe_msg,
 	msg_set_seqno(msg, mod(l_ptr->next_out_no + (0xffff/2)));
 
 	buf = tipc_buf_acquire(msg_size);
-	if (!buf)
+	if (!buf) {
+		drop_log("Failed to send protocol msg, no memory\n");
 		return;
+	}
 
 	skb_copy_to_linear_data(buf, msg, sizeof(l_ptr->proto_msg));
 	buf->priority = TC_PRIO_CONTROL;
@@ -2140,8 +2144,11 @@ static struct sk_buff *buf_extract(struct sk_buff *skb, u32 from_pos)
 	struct sk_buff *eb;
 
 	eb = tipc_buf_acquire(size);
-	if (eb)
+	if (eb) {
 		skb_copy_to_linear_data(eb, msg, size);
+	} else {
+		drop_log("Failed to extract embedded TIPC msg, no memory\n");
+	}
 	return eb;
 }
 
@@ -2319,6 +2326,7 @@ static int tipc_link_frag_xmit(struct tipc_link *l_ptr, struct sk_buff *buf)
 		if (fragm == NULL) {
 			kfree_skb(buf);
 			kfree_skb_list(buf_chain);
+			drop_log("Failed to prepare fragment TX msg, no memory\n");
 			return -ENOMEM;
 		}
 		msg_set_size(&fragm_hdr, fragm_sz + INT_H_SIZE);

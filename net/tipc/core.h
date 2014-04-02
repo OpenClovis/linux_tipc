@@ -203,5 +203,13 @@ static inline struct tipc_msg *buf_msg(struct sk_buff *skb)
 
 struct sk_buff *tipc_buf_acquire(u32 size);
 
+#define  TIPC_LOCAL_MEM_MGMT
+#ifdef TIPC_LOCAL_MEM_MGMT
+#define MAX_ETH_FRAME_SIZE 1530
+#define MAX_TIPC_PACKET_FRAME_SIZE  MAX_ETH_FRAME_SIZE
+#define TIPC_MEM_MGMT_MAX_QUEUE_SIZE  500
+struct sk_buff  *tipc_mem_mgmt_get_buf(void);
+void tipc_mem_mgmt_free_buf(struct sk_buff *skb);
+#endif
 #define drop_log pr_info
 #endif

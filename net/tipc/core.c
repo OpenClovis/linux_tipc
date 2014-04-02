@@ -53,6 +53,9 @@ int tipc_net_id __read_mostly;
 int tipc_remote_management __read_mostly;
 int sysctl_tipc_rmem[3] __read_mostly;	/* min/default/max */
 
+#ifdef TIPC_LOCAL_MEM_MGMT
+struct sk_buff_head tipc_mem_mgmt_queue_head;
+#endif
 /**
  * tipc_buf_acquire - creates a TIPC message buffer
  * @size: message size (including TIPC header)
@@ -76,11 +79,50 @@ struct sk_buff *tipc_buf_acquire(u32 size)
 	return skb;
 }
 
+#ifdef TIPC_LOCAL_MEM_MGMT
+struct sk_buff  *tipc_mem_mgmt_get_buf(void)
+{
+	int index = 0;
+	struct sk_buff *skb =NULL;
+
+
+	if (skb_queue_empty(&tipc_mem_mgmt_queue_head)) {
+		for(index = 0; index < TIPC_MEM_MGMT_MAX_QUEUE_SIZE; index++) {
+			skb = tipc_buf_acquire(MAX_TIPC_PACKET_FRAME_SIZE);
+			if (skb) {
+				skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
+                        }
+		}
+	}
+        return skb_dequeue(&tipc_mem_mgmt_queue_head);
+
+}
+
+void tipc_mem_mgmt_free_buf(struct sk_buff *skb)
+{
+	if (skb) {
+                //TODO: Need to optimize by adding node to head
+		skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
+	}
+}
+
+static void tipc_memory_mgmt_init(void)
+{
+	tipc_mem_mgmt_queue_head.next = tipc_mem_mgmt_queue_head.prev = (struct sk_buff *)&tipc_mem_mgmt_queue_head;
+}
+static void tipc_memory_mgmt_stop(void)
+{
+        skb_queue_purge(&tipc_mem_mgmt_queue_head);
+}
+#endif
 /**
  * tipc_core_stop - switch TIPC from SINGLE NODE to NOT RUNNING mode
  */
 static void tipc_core_stop(void)
 {
+#ifdef TIPC_LOCAL_MEM_MGMT
+	tipc_memory_mgmt_stop();
+#endif
 	tipc_handler_stop();
 	tipc_net_stop();
 	tipc_bearer_cleanup();
@@ -102,6 +144,9 @@ static int tipc_core_start(void)
 
 	get_random_bytes(&tipc_random, sizeof(tipc_random));
 
+#ifdef TIPC_LOCAL_MEM_MGMT
+	tipc_memory_mgmt_init();
+#endif
 	err = tipc_handler_start();
 	if (err)
 		goto out_handler;

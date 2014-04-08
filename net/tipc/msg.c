@@ -88,7 +88,7 @@ int tipc_msg_build(struct tipc_msg *hdr, struct iovec const *msg_sect,
 	}
 
 	*buf = tipc_buf_acquire(sz);
-	if (!(*buf)){
+	if (!(*buf) && (!(*buf = tipc_mem_mgmt_get_buf()))) {
                 drop_log("Failed build msg for specified header and data, no memory\n");
 		return -ENOMEM;
 	}

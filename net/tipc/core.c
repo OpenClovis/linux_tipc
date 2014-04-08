@@ -82,17 +82,9 @@ struct sk_buff *tipc_buf_acquire(u32 size)
 #ifdef TIPC_LOCAL_MEM_MGMT
 struct sk_buff  *tipc_mem_mgmt_get_buf(void)
 {
-	int index = 0;
-	struct sk_buff *skb =NULL;
-
 
 	if (skb_queue_empty(&tipc_mem_mgmt_queue_head)) {
-		for(index = 0; index < TIPC_MEM_MGMT_MAX_QUEUE_SIZE; index++) {
-			skb = tipc_buf_acquire(MAX_TIPC_PACKET_FRAME_SIZE);
-			if (skb) {
-				skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
-                        }
-		}
+        /*TODO:SURESH Need to handle if queue is empty */
 	}
         return skb_dequeue(&tipc_mem_mgmt_queue_head);
 
@@ -101,14 +93,23 @@ struct sk_buff  *tipc_mem_mgmt_get_buf(void)
 void tipc_mem_mgmt_free_buf(struct sk_buff *skb)
 {
 	if (skb) {
-                //TODO: Need to optimize by adding node to head
 		skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
 	}
 }
 
 static void tipc_memory_mgmt_init(void)
 {
+	int index = 0;
+	struct sk_buff *skb =NULL;
 	tipc_mem_mgmt_queue_head.next = tipc_mem_mgmt_queue_head.prev = (struct sk_buff *)&tipc_mem_mgmt_queue_head;
+	if (skb_queue_empty(&tipc_mem_mgmt_queue_head)) {
+		for(index = 0; index < TIPC_MEM_MGMT_MAX_QUEUE_SIZE; index++) {
+			skb = tipc_buf_acquire(MAX_TIPC_PACKET_FRAME_SIZE);
+			if (skb) {
+				skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
+                        }
+		}
+	}
 }
 static void tipc_memory_mgmt_stop(void)
 {

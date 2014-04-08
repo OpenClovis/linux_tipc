@@ -268,7 +268,7 @@ static struct sk_buff *port_build_proto_msg(struct tipc_port *p_ptr,
 	struct tipc_msg *msg;
 
 	buf = tipc_buf_acquire(INT_H_SIZE);
-	if (buf) {
+	if ((buf) || (buf = tipc_mem_mgmt_get_buf())) {
 		msg = buf_msg(buf);
 		tipc_msg_init(msg, CONN_MANAGER, type, INT_H_SIZE,
 			      tipc_port_peernode(p_ptr));
@@ -309,7 +309,7 @@ int tipc_reject_msg(struct sk_buff *buf, u32 err)
 	rmsg_sz = hdr_sz + min_t(u32, data_sz, MAX_REJECT_SIZE);
 
 	rbuf = tipc_buf_acquire(rmsg_sz);
-	if (rbuf == NULL){
+	if ((rbuf == NULL) && (!(rbuf = tipc_mem_mgmt_get_buf()))) {
 		drop_log("Failed to create reject msg, no memory\n");
 		goto exit;
 	}
@@ -431,7 +431,7 @@ static struct sk_buff *port_build_peer_abort_msg(struct tipc_port *p_ptr, u32 er
 		return NULL;
 
 	buf = tipc_buf_acquire(BASIC_H_SIZE);
-	if (buf) {
+	if ((buf) || (buf = tipc_mem_mgmt_get_buf())) {
 		msg = buf_msg(buf);
 		memcpy(msg, &p_ptr->phdr, BASIC_H_SIZE);
 		msg_set_hdr_sz(msg, BASIC_H_SIZE);
@@ -456,7 +456,7 @@ void tipc_port_proto_rcv(struct sk_buff *buf)
 	p_ptr = tipc_port_lock(destport);
 	if (!p_ptr || !p_ptr->connected || !tipc_port_peer_msg(p_ptr, msg)) {
 		r_buf = tipc_buf_acquire(BASIC_H_SIZE);
-		if (r_buf) {
+		if ((r_buf) || (r_buf = tipc_mem_mgmt_get_buf())) {
 			msg = buf_msg(r_buf);
 			tipc_msg_init(msg, TIPC_HIGH_IMPORTANCE, TIPC_CONN_MSG,
 				      BASIC_H_SIZE, msg_orignode(msg));

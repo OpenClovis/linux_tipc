@@ -210,6 +210,8 @@ struct sk_buff *tipc_buf_acquire(u32 size);
 #define TIPC_MEM_MGMT_MAX_QUEUE_SIZE  500
 struct sk_buff  *tipc_mem_mgmt_get_buf(void);
 void tipc_mem_mgmt_free_buf(struct sk_buff *skb);
+void tipc_mem_mgmt_timer_start(void);
+void tipc_mem_mgmt_timer_stop(void);
 #endif
 #define drop_log pr_info
 #endif

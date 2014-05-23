@@ -42,6 +42,8 @@
 #include "port.h"
 
 #include <linux/module.h>
+#include <linux/ktime.h>
+#include <linux/timer.h>
 
 /* global variables used by multiple sub-systems within TIPC */
 int tipc_random __read_mostly;
@@ -55,6 +57,10 @@ int sysctl_tipc_rmem[3] __read_mostly;	/* min/default/max */
 
 #ifdef TIPC_LOCAL_MEM_MGMT
 struct sk_buff_head tipc_mem_mgmt_queue_head;
+static struct timer_list internal_buffer_timer;
+
+#define MS_TO_NS(x)	(x * 1E6L)
+
 #endif
 /**
  * tipc_buf_acquire - creates a TIPC message buffer
@@ -80,11 +86,47 @@ struct sk_buff *tipc_buf_acquire(u32 size)
 }
 
 #ifdef TIPC_LOCAL_MEM_MGMT
+static void tipc_mem_mgmt_timer_callback(unsigned long data)
+{
+
+	int index = 0;
+	struct sk_buff *skb =NULL;
+
+	//printk( "TIPC Internal Memory Mgmnt timer called (%ld), data(%ld).\n", jiffies, data );
+	if (skb_queue_len(&tipc_mem_mgmt_queue_head) < (TIPC_MEM_MGMT_MAX_QUEUE_SIZE/4)) {
+		for(index = 0; index < TIPC_MEM_MGMT_MAX_QUEUE_SIZE; index++) {
+			skb = tipc_buf_acquire(MAX_TIPC_PACKET_FRAME_SIZE);
+			if (skb) {
+				skb_queue_tail(&tipc_mem_mgmt_queue_head, skb);
+                        }
+		}
+		
+	}
+	mod_timer(&internal_buffer_timer, jiffies + 100L);
+}
+
+void tipc_mem_mgmt_timer_start()
+{
+
+        init_timer(&internal_buffer_timer);
+        internal_buffer_timer.function = tipc_mem_mgmt_timer_callback;
+        internal_buffer_timer.data = 1UL;
+        internal_buffer_timer.expires = jiffies + 100L;
+        add_timer(&internal_buffer_timer);
+}
+
+void tipc_mem_mgmt_timer_stop()
+{
+	del_timer_sync(&internal_buffer_timer);
+}
+
 struct sk_buff  *tipc_mem_mgmt_get_buf(void)
 {
 
 	if (skb_queue_empty(&tipc_mem_mgmt_queue_head)) {
         /*TODO:SURESH Need to handle if queue is empty */
+           printk("Internal Buffer Queue is Empty...");
+           return NULL;
 	}
         return skb_dequeue(&tipc_mem_mgmt_queue_head);
 
@@ -101,6 +143,7 @@ static void tipc_memory_mgmt_init(void)
 {
 	int index = 0;
 	struct sk_buff *skb =NULL;
+
 	tipc_mem_mgmt_queue_head.next = tipc_mem_mgmt_queue_head.prev = (struct sk_buff *)&tipc_mem_mgmt_queue_head;
 	if (skb_queue_empty(&tipc_mem_mgmt_queue_head)) {
 		for(index = 0; index < TIPC_MEM_MGMT_MAX_QUEUE_SIZE; index++) {
@@ -110,9 +153,11 @@ static void tipc_memory_mgmt_init(void)
                         }
 		}
 	}
+	tipc_mem_mgmt_timer_start();
 }
 static void tipc_memory_mgmt_stop(void)
 {
+	tipc_mem_mgmt_timer_stop();
         skb_queue_purge(&tipc_mem_mgmt_queue_head);
 }
 #endif

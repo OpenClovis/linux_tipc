@@ -202,6 +202,7 @@ static inline struct tipc_msg *buf_msg(struct sk_buff *skb)
 }
 
 struct sk_buff *tipc_buf_acquire(u32 size);
+void kfree_skb_list(struct sk_buff *segs);
 
 #define  TIPC_LOCAL_MEM_MGMT
 #ifdef TIPC_LOCAL_MEM_MGMT

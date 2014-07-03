@@ -85,6 +85,15 @@ struct sk_buff *tipc_buf_acquire(u32 size)
 	return skb;
 }
 
+void kfree_skb_list(struct sk_buff *segs)
+{
+	while (segs) {
+		struct sk_buff *next = segs->next;
+
+		kfree_skb(segs);
+		segs = next;
+	}
+}
 #ifdef TIPC_LOCAL_MEM_MGMT
 static void tipc_mem_mgmt_timer_callback(unsigned long data)
 {

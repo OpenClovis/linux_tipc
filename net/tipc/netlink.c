@@ -87,7 +87,7 @@ int tipc_netlink_start(void)
 {
 	int res;
 
-	res = genl_register_family_with_ops(&tipc_genl_family, tipc_genl_ops);
+	res = genl_register_family_with_ops(&tipc_genl_family, tipc_genl_ops, 1);
 	if (res) {
 		pr_err("Failed to register netlink interface\n");
 		return res;

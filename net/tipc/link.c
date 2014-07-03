@@ -369,7 +369,6 @@ void tipc_link_wakeup_ports(struct tipc_link *l_ptr, int all)
 exit:
 	spin_unlock_bh(&tipc_port_list_lock);
 }
-
 /**
  * link_release_outqueue - purge link's outbound message queue
  * @l_ptr: pointer to link

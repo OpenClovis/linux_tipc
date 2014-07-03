@@ -429,7 +429,8 @@ int tipc_enable_l2_media(struct tipc_bearer *b)
 	b->bcast_addr.broadcast = 1;
 	b->mtu = dev->mtu;
 	tipc_l2_media_addr_set(b, &b->addr, (char *)dev->dev_addr);
-	rcu_assign_pointer(dev->tipc_ptr, b);
+	/*atalk_ptr is used because of unavailability of tipc_ptr member */
+	rcu_assign_pointer(dev->atalk_ptr, b);
 	return 0;
 }
 
@@ -442,7 +443,8 @@ int tipc_enable_l2_media(struct tipc_bearer *b)
 void tipc_disable_l2_media(struct tipc_bearer *b)
 {
 	struct net_device *dev = (struct net_device *)b->media_ptr;
-	RCU_INIT_POINTER(dev->tipc_ptr, NULL);
+	/*atalk_ptr is used because of unavailability of tipc_ptr member */
+	RCU_INIT_POINTER(dev->atalk_ptr, NULL); 
 	dev_put(dev);
 }
 
@@ -514,7 +516,8 @@ static int tipc_l2_rcv_msg(struct sk_buff *buf, struct net_device *dev,
 	}
 
 	rcu_read_lock();
-	b_ptr = rcu_dereference(dev->tipc_ptr);
+	/*atalk_ptr is used because of unavailability of tipc_ptr member */
+	b_ptr = rcu_dereference(dev->atalk_ptr);
 	if (likely(b_ptr)) {
 		if (likely(buf->pkt_type <= PACKET_BROADCAST)) {
 			buf->next = NULL;
@@ -543,13 +546,15 @@ static int tipc_l2_device_event(struct notifier_block *nb, unsigned long evt,
 				void *ptr)
 {
 	struct tipc_bearer *b_ptr;
-	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+	/*struct net_device *dev = netdev_notifier_info_to_dev(ptr); */
+	struct net_device *dev = (struct net_device *)ptr;
 
 	if (!net_eq(dev_net(dev), &init_net))
 		return NOTIFY_DONE;
 
 	rcu_read_lock();
-	b_ptr = rcu_dereference(dev->tipc_ptr);
+	/*atalk_ptr is used because of unavailability of tipc_ptr member */
+	b_ptr = rcu_dereference(dev->atalk_ptr);
 	if (!b_ptr) {
 		rcu_read_unlock();
 		return NOTIFY_DONE;

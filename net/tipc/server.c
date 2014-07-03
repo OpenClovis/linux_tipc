@@ -215,15 +215,22 @@ static struct tipc_conn *tipc_alloc_conn(struct tipc_server *s)
 	INIT_WORK(&con->swork, tipc_send_work);
 	INIT_WORK(&con->rwork, tipc_recv_work);
 
+        ret = idr_pre_get(&s->conn_idr, GFP_ATOMIC);
+	if (ret == 0) {
+		kfree(con);
+		drop_log("Tipc alloc connection failed, idr_pre_get failed ret:%d\n", ret);
+		return ERR_PTR(-ENOMEM);
+	}
 	spin_lock_bh(&s->idr_lock);
-	ret = idr_alloc(&s->conn_idr, con, 0, 0, GFP_ATOMIC);
+	//ret = idr_alloc(&s->conn_idr, con, 0, 0, GFP_ATOMIC);
+	ret = idr_get_new(&s->conn_idr, con, &con->conid);
 	if (ret < 0) {
 		kfree(con);
 		spin_unlock_bh(&s->idr_lock);
 		drop_log("Tipc alloc connection failed, idr_alloc failed ret:%d\n", ret);
 		return ERR_PTR(-ENOMEM);
 	}
-	con->conid = ret;
+//	con->conid = ret;
 	s->idr_in_use++;
 	spin_unlock_bh(&s->idr_lock);
 

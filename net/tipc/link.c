@@ -524,7 +524,7 @@ static void link_state_event(struct tipc_link *l_ptr, unsigned int event)
 			l_ptr->fsm_msg_cnt = 0;
 			tipc_link_proto_xmit(l_ptr, STATE_MSG, 1, 0, 0, 0, 0);
 			l_ptr->fsm_msg_cnt++;
-			link_set_timer(l_ptr, cont_intv / 4);
+			link_set_timer(l_ptr, cont_intv / 2);/* OpenClovis, was /4 but give more time for the other side to wake up */
 			break;
 		case RESET_MSG:
 			pr_info("%s<%s>, requested by peer\n", link_rst_msg,
@@ -571,11 +571,11 @@ static void link_state_event(struct tipc_link *l_ptr, unsigned int event)
 					l_ptr->fsm_msg_cnt++;
 				}
 				link_set_timer(l_ptr, cont_intv);
-			} else if (l_ptr->fsm_msg_cnt < l_ptr->abort_limit) {
+			} else if (l_ptr->fsm_msg_cnt < l_ptr->abort_limit + 1000) {/* OpenClovis +1000 to never reset the link */
 				tipc_link_proto_xmit(l_ptr, STATE_MSG,
 						     1, 0, 0, 0, 0);
 				l_ptr->fsm_msg_cnt++;
-				link_set_timer(l_ptr, cont_intv / 4);
+				link_set_timer(l_ptr, cont_intv / 2);/* OpenClovis, was /4 but give more time for the other side to wake up */
 			} else {	/* Link has failed */
 				pr_warn("%s<%s>, peer not responding\n",
 					link_rst_msg, l_ptr->name);
@@ -1613,10 +1613,11 @@ void tipc_rcv(struct sk_buff *head, struct tipc_bearer *b_ptr)
 				l_ptr->stats.recv_fragmented++;
 				msg = buf_msg(buf);
 			} else {
-				if (rc == LINK_REASM_ERROR)
+				if (rc == LINK_REASM_ERROR) {
+		                	drop_log("Link fragment reassembly error\n");
 					tipc_link_reset(l_ptr);
+				}
 				tipc_node_unlock(n_ptr);
-		                drop_log("Link fragment reassembly error\n");
 				continue;
 			}
 		}

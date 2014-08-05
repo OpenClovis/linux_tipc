@@ -42,7 +42,7 @@
 #include "msg.h"
 #include "node_subscr.h"
 
-#define TIPC_FLOW_CONTROL_WIN 512
+#define TIPC_FLOW_CONTROL_WIN 512*2
 #define CONN_OVERLOAD_LIMIT	((TIPC_FLOW_CONTROL_WIN * 2 + 1) * \
 				SKB_TRUESIZE(TIPC_MAX_USER_MSG_SIZE))
 

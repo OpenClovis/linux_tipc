@@ -77,8 +77,11 @@ static struct sk_buff *tipc_disc_init_msg(u32 type, u32 dest_domain,
 {
 	struct sk_buff *buf = tipc_buf_acquire(INT_H_SIZE);
 	struct tipc_msg *msg;
-
-	if ((buf) || (buf = tipc_mem_mgmt_get_buf())) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((buf) || (buf = tipc_mem_mgmt_get_buf())) {
+#else
+  if ((buf)) {
+#endif
 		msg = buf_msg(buf);
 		tipc_msg_init(msg, LINK_CONFIG, type, INT_H_SIZE, dest_domain);
 		msg_set_non_seq(msg, 1);

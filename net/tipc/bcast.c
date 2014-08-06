@@ -308,7 +308,11 @@ void tipc_bclink_update_link_state(struct tipc_node *n_ptr, u32 last_sent)
 	/* Send NACK */
 
 	buf = tipc_buf_acquire(INT_H_SIZE);
+#ifdef TIPC_LOCAL_MEM_MGMT
 	if ((buf) || (buf = tipc_mem_mgmt_get_buf())) {
+#else
+	if ((buf)) {
+#endif
 		struct tipc_msg *msg = buf_msg(buf);
 
 		tipc_msg_init(msg, BCAST_PROTOCOL, STATE_MSG,

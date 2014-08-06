@@ -118,8 +118,11 @@ static struct sk_buff *named_prepare_buf(u32 type, u32 size, u32 dest)
 {
 	struct sk_buff *buf = tipc_buf_acquire(INT_H_SIZE + size);
 	struct tipc_msg *msg;
-
-	if ((buf != NULL)  || (buf = tipc_mem_mgmt_get_buf())) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((buf != NULL)  || (buf = tipc_mem_mgmt_get_buf())) {
+#else
+  if ((buf != NULL)) {
+#endif
 		msg = buf_msg(buf);
 		tipc_msg_init(msg, NAME_DISTRIBUTOR, type, INT_H_SIZE, dest);
 		msg_set_size(msg, INT_H_SIZE + size);

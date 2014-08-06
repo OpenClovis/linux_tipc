@@ -791,7 +791,11 @@ int __tipc_link_xmit(struct tipc_link *l_ptr, struct sk_buff *buf)
 			struct sk_buff *bundler = tipc_buf_acquire(max_packet);
 			struct tipc_msg bundler_hdr;
 
-			if ((bundler) || (bundler= tipc_mem_mgmt_get_buf())) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+      if ((bundler) || (bundler= tipc_mem_mgmt_get_buf())) {
+#else
+      if ((bundler)) {
+#endif
 				tipc_msg_init(&bundler_hdr, MSG_BUNDLER, OPEN_MSG,
 					 INT_H_SIZE, l_ptr->addr);
 				skb_copy_to_linear_data(bundler, &bundler_hdr,
@@ -854,8 +858,12 @@ static void tipc_link_sync_xmit(struct tipc_link *l)
 	struct tipc_msg *msg;
 
 	buf = tipc_buf_acquire(INT_H_SIZE);
+#ifdef TIPC_LOCAL_MEM_MGMT
 	if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
-		drop_log("Failed to syncrhonize broadcast link endpoints, no memeory");
+#else
+	if ((!buf)) {
+#endif
+		drop_log("Failed to synchronize broadcast link endpoints, no memory");
 		return;
 	}
 
@@ -1078,8 +1086,13 @@ again:
 
 	/* Prepare header of first fragment */
 	buf_chain = buf = tipc_buf_acquire(max_pkt);
-	if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
-		drop_log("Failed to prepare header for for the first fragment, no memeory");
+
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
+#else
+  if ((!buf)) {
+#endif
+		drop_log("Failed to prepare header for for the first fragment, no memory");
 		return -ENOMEM;
 	}
 	buf->next = NULL;
@@ -1129,8 +1142,12 @@ error:
 			msg_set_fragm_no(&fragm_hdr, ++fragm_no);
 			prev = buf;
 			buf = tipc_buf_acquire(fragm_sz + INT_H_SIZE);
-			if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
-				drop_log("Failed to intiate new fragment, no memeory");
+#ifdef TIPC_LOCAL_MEM_MGMT
+      if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
+#else
+      if ((!buf)) {
+#endif
+				drop_log("Failed to initiate new fragment, no memory");
 				res = -ENOMEM;
 				goto error;
 			}
@@ -1840,8 +1857,12 @@ void tipc_link_proto_xmit(struct tipc_link *l_ptr, u32 msg_typ, int probe_msg,
 	msg_set_seqno(msg, mod(l_ptr->next_out_no + (0xffff/2)));
 
 	buf = tipc_buf_acquire(msg_size);
-	if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
-		drop_log("Failed to send protocol msg, no memory\n");
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
+#else
+  if ((!buf)) {
+#endif
+	    drop_log("Failed to send protocol msg, no memory\n");
 		return;
 	}
 
@@ -2015,7 +2036,11 @@ static void tipc_link_tunnel_xmit(struct tipc_link *l_ptr,
 	}
 	msg_set_size(tunnel_hdr, length + INT_H_SIZE);
 	buf = tipc_buf_acquire(length + INT_H_SIZE);
-	if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((!buf) && (!(buf = tipc_mem_mgmt_get_buf()))) {
+#else
+  if ((!buf)) {
+#endif
 		pr_warn("%sunable to send tunnel msg\n", link_co_err);
 		return;
 	}
@@ -2051,7 +2076,12 @@ void tipc_link_failover_send_queue(struct tipc_link *l_ptr)
 		struct sk_buff *buf;
 
 		buf = tipc_buf_acquire(INT_H_SIZE);
-		if ((buf) || ((buf = tipc_mem_mgmt_get_buf()))) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+    if ((buf) || ((buf = tipc_mem_mgmt_get_buf()))) {
+#else
+    if ((buf)) {
+#endif
+
 			skb_copy_to_linear_data(buf, &tunnel_hdr, INT_H_SIZE);
 			msg_set_size(&tunnel_hdr, INT_H_SIZE);
 			__tipc_link_xmit(tunnel, buf);
@@ -2119,7 +2149,11 @@ void tipc_link_dup_queue_xmit(struct tipc_link *l_ptr,
 		msg_set_bcast_ack(msg, l_ptr->owner->bclink.last_in);
 		msg_set_size(&tunnel_hdr, length + INT_H_SIZE);
 		outbuf = tipc_buf_acquire(length + INT_H_SIZE);
-		if ((outbuf == NULL) && ((outbuf = tipc_mem_mgmt_get_buf()))) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+    if ((outbuf == NULL) && (!(outbuf = tipc_mem_mgmt_get_buf()))) {
+#else
+    if ((outbuf == NULL)) {
+#endif
 			pr_warn("%sunable to send duplicate msg\n",
 				link_co_err);
 			return;
@@ -2149,7 +2183,11 @@ static struct sk_buff *buf_extract(struct sk_buff *skb, u32 from_pos)
 	struct sk_buff *eb;
 
 	eb = tipc_buf_acquire(size);
-        if ((eb) || (eb = tipc_mem_mgmt_get_buf())) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if ((eb) || (eb = tipc_mem_mgmt_get_buf())) {
+#else
+  if ((eb)) {
+#endif
 		skb_copy_to_linear_data(eb, msg, size);
 	} else {
 		drop_log("Failed to extract embedded TIPC msg, no memory\n");
@@ -2328,7 +2366,11 @@ static int tipc_link_frag_xmit(struct tipc_link *l_ptr, struct sk_buff *buf)
 			msg_set_type(&fragm_hdr, LAST_FRAGMENT);
 		}
 		fragm = tipc_buf_acquire(fragm_sz + INT_H_SIZE);
-		if ((fragm == NULL) && (!(fragm = tipc_mem_mgmt_get_buf()))) {
+#ifdef TIPC_LOCAL_MEM_MGMT
+    if ((fragm == NULL) && (!(fragm = tipc_mem_mgmt_get_buf()))) {
+#else
+    if ((fragm == NULL)) {
+#endif
 			kfree_skb(buf);
 			kfree_skb_list(buf_chain);
 			drop_log("Failed to prepare fragment TX msg, no memory\n");

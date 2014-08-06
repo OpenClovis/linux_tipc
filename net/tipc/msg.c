@@ -88,8 +88,12 @@ int tipc_msg_build(struct tipc_msg *hdr, struct iovec const *msg_sect,
 	}
 
 	*buf = tipc_buf_acquire(sz);
-	if (!(*buf) && (!(*buf = tipc_mem_mgmt_get_buf()))) {
-                drop_log("Failed build msg for specified header and data, no memory\n");
+#ifdef TIPC_LOCAL_MEM_MGMT
+  if (!(*buf) && (!(*buf = tipc_mem_mgmt_get_buf()))) {
+#else
+  if (!(*buf)) {
+#endif
+      drop_log("Failed build msg for specified header and data, no memory\n");
 		return -ENOMEM;
 	}
 	skb_copy_to_linear_data(*buf, hdr, hsz);
